@@ -94,10 +94,11 @@ class SpamCheckActor(
 
 
   private def checkForSpam(spamCheckTask: SpamCheckTask, stuffToSpamCheck: StuffToSpamCheck) {
-    globals.spamChecker.detectPostSpam(spamCheckTask, stuffToSpamCheck) map { anyIsSpamReason =>
-      anyIsSpamReason foreach { isSpamReason =>
+    globals.spamChecker.detectPostSpam(spamCheckTask, stuffToSpamCheck) map {
+        spamFoundResults: SpamFoundResults =>
+      if (spamFoundResults.nonEmpty) {
         // We're not inside receive() any longer, so its try..catch is of no use now.
-        try systemDao.dealWithSpam(spamCheckTask, isSpamReason)
+        try systemDao.dealWithSpam(spamCheckTask, spamFoundResults)
         catch {
           case ex: Exception =>
             p.Logger.error(

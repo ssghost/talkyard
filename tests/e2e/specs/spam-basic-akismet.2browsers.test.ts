@@ -33,8 +33,15 @@ let topicTitle = "Links links links";
 let post2Selector = '#post-2';
 let post3Selector = '#post-3';
 
+const AkismetAlwaysSpamName = 'viagra-test-123';
+const AkismetAlwaysSpamEmail = 'akismet-guaranteed-spam@example.com';
 
-describe("spam test, no external services:", () => {
+describe("spam test, external services like Akismet and Google Safe Browsing  TyTSPEXT", () => {
+
+  if (!settings.include3rdPartyDependentTests) {
+    console.log("Skipping this spec; no 3rd party credentials specified.");
+    return;
+  }
 
   it("initialize people", () => {
     everyone = _.assign(browser, pagesFor(browser));
@@ -58,36 +65,39 @@ describe("spam test, no external services:", () => {
     site.settings.requireVerifiedEmail = false;
     site.members.push(mons);
     site.members.push(maria);
-    site.members.push(mallory);
+    //site.members.push(mallory);
     idAddress = server.importSiteData(site);
+settings.debugEachStep=true;
   });
 
-  it("Owen and Mallory go to the homepage and log in", () => {
-    everyone.go(idAddress.origin);
-    browserA.assertPageTitleMatches(forumTitle);
-    browserB.assertPageTitleMatches(forumTitle);
-    owensBrowser.complex.loginWithPasswordViaTopbar(owen);
-    owensBrowser.disableRateLimits();
-    mallorysBrowser.complex.loginWithPasswordViaTopbar(mallory);
+  it("Mallory tries to sign up with a spammers address", () => {
+    mallorysBrowser.go(idAddress.origin);
+    mallorysBrowser.debug();
+    mallorysBrowser.complex.signUpAsMemberViaTopbar(
+        { ...mallory, emailAddress: AkismetAlwaysSpamEmail });
+  });
+
+  it("... he's rejected, because of the email address", () => {
+    mallorysBrowser.debug();
+    // EdE7KVF2_
+  });
+
+  it("Mallory retries with a non-spam address", () => {
+    mallorysBrowser.debug();
+    mallorysBrowser.complex.signUpAsMemberViaTopbar(mallory);
     mallorysBrowser.disableRateLimits();
   });
 
-  it("Mallory posts too many links, the server thinks it's spam and rejects the comment", () => {
+  it("Mallory submits spam", () => {
+    mallorysBrowser.debug();
+
     mallorysBrowser.forumButtons.clickCreateTopic();
     mallorysBrowser.editor.editTitle(topicTitle);
-    mallorysBrowser.editor.editText(`<3 links <3 <3 <3
-        http://www.example.com/link-1
-        http://www.example.com/link-2
-        http://www.example.com/link-3
-        http://www.example.com/link-4
-        http://www.example.com/link-5
-        http://www.example.com/link-6
-        http://www.example.com/link-7
-        http://www.example.com/link-8
-        http://www.example.com/link-9
+    mallorysBrowser.editor.editText(`${AkismetAlwaysSpamName}
         http://www.example.com/link-10`);
     mallorysBrowser.editor.save();
-    mallorysBrowser.serverErrorDialog.waitAndAssertTextMatches(/links.*EdE4KFY2_/);
+    mallorysBrowser.editor.debug();
+    //mallorysBrowser.serverErrorDialog.waitAndAssertTextMatches(/links.*EdE4KFY2_/);
     mallorysBrowser.serverErrorDialog.close();
   });
 
@@ -156,6 +166,11 @@ describe("spam test, no external services:", () => {
   it("... closes the error dialog", () => {
     mallorysBrowser.serverErrorDialog.close();
     strangersBrowser.loginDialog.clickCancel();
+  });
+
+  it("Owen goes to the Review admin tab and logs in", () => {
+    owensBrowser.adminArea.goToReview(idAddress.origin);
+    owensBrowser.loginDialog.loginWithPassword(owen);
   });
 
 });

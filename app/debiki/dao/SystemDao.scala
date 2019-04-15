@@ -388,7 +388,7 @@ class SystemDao(
     }
   }
 
-  def dealWithSpam(spamCheckTask: SpamCheckTask, isSpamReason: String) {
+  def dealWithSpam(spamCheckTask: SpamCheckTask, spamFoundResults: SpamFoundResults) {
     // COULD if is new page, no replies, then hide the whole page (no point in showing a spam page).
     // Then mark section page stale below (4KWEBPF89).
     val sitePageIdToRefresh = readWriteTransaction { transaction =>
@@ -401,7 +401,9 @@ class SystemDao(
       val postAfter = postBefore.copy(
         bodyHiddenAt = Some(siteTransaction.now.toJavaDate),
         bodyHiddenById = Some(SystemUserId),
-        bodyHiddenReason = Some(s"Spam because: $isSpamReason"))
+        bodyHiddenReason = Some(
+          s"Is spam or malware links?:\n\n" +
+          spamFoundResults.mkString("\n\n")))
 
       val reviewTask = PostsDao.createOrAmendOldReviewTask(
         createdById = SystemUserId, postAfter, reasons = Vector(ReviewReason.PostIsSpam),

@@ -484,6 +484,28 @@ package object core {
   }
 
 
+  type SpamFoundResults = immutable.Seq[SpamCheckResult.SpamFound]
+
+  sealed abstract class SpamCheckResult
+
+  object SpamCheckResult {
+    case object NoSpam extends SpamCheckResult
+
+    /**
+      * @param modsMayUnhide — if moderators are allowed to override the spam check result
+      *  and show the post, although detected as spam. *Not* allowed (i.e. is false)
+      *  if Google Safe Browsing API says a link is malware.
+      * @param spamCheckerDomain — e.g. "akismet.com", "safebrowsing.googleapis.com", "dbl.spamhaus.org".
+      * @param humanReadableMessage — a message that can be shown to the staff, so they'll know why
+      *  the post was considered spam.
+      */
+    case class SpamFound(
+      modsMayUnhide: Boolean,
+      spamCheckerDomain: String,
+      humanReadableMessage: String) extends  SpamCheckResult
+  }
+
+
   /**
     * @param firstVisitedAt The first time the user visited the page, perhaps without reading.
     * @param lastVisitedAt The last time the user visited the page, perhaps without reading.
