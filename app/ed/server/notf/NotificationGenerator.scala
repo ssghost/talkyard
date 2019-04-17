@@ -48,14 +48,39 @@ case class NotificationGenerator(tx: SiteTransaction, nashorn: Nashorn, config: 
 
 
   def generateForNewPost(page: Page, newPost: Post, anyNewTextAndHtml: Option[TextAndHtml],
+        anyReviewTask: Option[ReviewTask],
         skipMentions: Boolean = false): Notifications = {
 
     require(page.id == newPost.pageId, "TyE74KEW9")
 
     val approverId = newPost.approvedById getOrElse {
-      // Don't generate notifications until later when the post gets approved and becomes visible.
-      return Notifications.None
+      // This post hasn't yet been approved.
+      // Generate notifications to staff members, so they can approve it. Don't notify
+      // others until later, when the post has been approved and is visible.
+
+      val staffUsers: Seq[User] = tx.loadUsers(PeopleQuery(
+        orderOffset = PeopleOrderOffset.BySignedUpAtDesc, // order doesn't matter
+        peopleFilter = PeopleFilter(onlyStaff = true)))
+
+      for (staffUser <- staffUsers) {
+        notfsToCreate += Notification.NewPost(
+          NotificationType.NewReviewTask,
+          siteId = tx.siteId,
+          id = bumpAndGetNextNotfId(),
+          createdAt = newPost.createdAt,
+          uniquePostId = newPost.id,
+          byUserId = newPost.createdById,
+          toUserId = staffUser.id)
+          // + incl anyReviewTask too
+      }
+
+      return generatedNotifications
     }
+
+    // Don't notify staff twice, in case they've gotten a post-to-review notf already about
+    // this post (see just above).
+    val oldNotfsToStaff = tx.loadNotificationsAboutPost(newPost.id, NotificationType.NewReviewTask)
+    sentToUserIds ++= oldNotfsToStaff.map(_.toUserId)
 
     anyAuthor = Some(tx.loadTheParticipant(newPost.createdById))
 
@@ -452,7 +477,7 @@ case class NotificationGenerator(tx: SiteTransaction, nashorn: Nashorn, config: 
     dieIf(mentionsForAllCreated && mentionsForAllDeleted, "EdE2WK4Q0")
 
     lazy val previouslyMentionedUserIds: Set[UserId] =
-      tx.loadMentionsOfPeopleInPost(newPost.id).map(_.toUserId).toSet
+      tx.loadNotificationsAboutPost(newPost.id, NotificationType.Mention).map(_.toUserId).toSet
 
     if (mentionsForAllDeleted) {
       // CLEAN_UP COULD simplify this whole function — needn't load mentionsDeletedForUsers above.

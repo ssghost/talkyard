@@ -42,19 +42,52 @@ sealed abstract class NotificationType(val IntValue: Int) { def toInt: Int = Int
 // Could:  enum / 1000 = notification type, enum % 1000 = how many got notified?
 // No, instead, case class:  NotfTypeNumNotified(notfType, numNotified: Int)
 object NotificationType {
+
+  // 100-199_ Notifications to staff about pending review tasks.
+  // ***NO** instead, just this:  NewReviewTask extends NotificationType(7)
+  //                         ReviewTaskResolved extends NotificationType(8)
+  //val NewPostWaitingForReviewStartsAt = NewPostWaitingForReviewIsVisibleNewUser
+  case object NewReviewTask extends NotificationType(101)
+  //case object NewPostWaitingForReviewIsVisibleNewUser extends NotificationType(101)
+  //case object NewPostWaitingForReviewIsVisibleThreatUser extends NotificationType(102)
+  //case object NewPostWaitingForReviewIsHiddenNewUser extends NotificationType(103)
+  //case object NewPostWaitingForReviewIsHiddenThreatUser extends NotificationType(104)
+  //case object NewPostWaitingForReviewSeemsLikeSpamNewUser extends NotificationType(105)
+  //case object NewPostWaitingForReviewSeemsLikeSpamOldUser extends NotificationType(106)
+  //val NewPostWaitingForReviewEndsAt = NewPostWaitingForReviewSeemsLikeSpamOldUser
+
+  // 200-299  Notifications about review tasks resolved, to staff and to the
+  // ones who caused the review tasks.
+  // 201: post approved
+  // 202: edits requested
+  // 203: post rejected
+  // 2
+  // 251: staff notified that a staff member has reviewed a post, and the outcome.
+
+  // 300-399_ New post visible, "everyone" notified.
+  // Todo: Bump 1,2,4,5... to  301, 302, ...: SQL add 300.
   case object DirectReply extends NotificationType(1)
   case object Mention extends NotificationType(2)  // –> 1000, group mention 1001 ...
   // + Quote
   case object Message extends NotificationType(4)
   case object NewPost extends NotificationType(5)
+  // + Your post was approved, now shown here: ....
   // + NewTopic  [REFACTORNOTFS]
+
+  // 400-499 Something "normal"/good happened with an already existing post.
   // + TopicProgress
   // + QuestionAnswered
   // + TopicDone
   // + TopicClosed
-  case object PostTagged extends NotificationType(6)
+  case object PostTagged extends NotificationType(6)   // ——> 406
 
-  // + GoupMention: 1001 ... 1999 = group size + 1000
+  // 800-899 Some problems with an already existing post; staff notified.
+  case object PostUnpopular extends NotificationType(801)
+  case object PostFlagged extends NotificationType(802)
+  // post auto hidden
+  // post deleted
+
+  // + GoupMention: 1001 ... 1999 = group size + 1000  ? what ? no, skip? Weird.
 
   def fromInt(value: Int): Option[NotificationType] = Some(value match {
     case DirectReply.IntValue => DirectReply

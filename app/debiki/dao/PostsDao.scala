@@ -242,7 +242,8 @@ trait PostsDao {
 
     val notifications =
       if (skipNotifications) Notifications.None
-      else notfGenerator(tx).generateForNewPost(page, newPost, Some(textAndHtml))
+      else notfGenerator(tx).generateForNewPost(
+            page, newPost, anyNewTextAndHtml = Some(textAndHtml), anyReviewTask)
     tx.saveDeleteNotifications(notifications)
 
     (newPost, author, notifications, anyReviewTask)
@@ -524,7 +525,8 @@ trait PostsDao {
     // send the post + json back to the caller?
     // & publish [pubsub]
 
-    val notfs = notfGenerator(tx).generateForNewPost(page, newPost, Some(textAndHtml))
+    val notfs = notfGenerator(tx).generateForNewPost(
+      page, newPost, anyNewTextAndHtml = Some(textAndHtml), anyReviewTask = None)
     tx.saveDeleteNotifications(notfs)
 
     (newPost, notfs)
@@ -1332,7 +1334,8 @@ trait PostsDao {
         Notifications.None
       }
       else if (isApprovingNewPost) {
-        notfGenerator(tx).generateForNewPost(page, postAfter, None)
+        notfGenerator(tx).generateForNewPost(page, postAfter, anyNewTextAndHtml = None,
+          anyReviewTask = None)
       }
       else {
         notfGenerator(tx).generateForEdits(postBefore, postAfter, None)
@@ -1384,7 +1387,8 @@ trait PostsDao {
       // ------ Notifications
 
       if (!post.isTitle) {
-        val notfs = notfGenerator(tx).generateForNewPost(page, postAfter, None)
+        val notfs = notfGenerator(tx).generateForNewPost(page, postAfter, anyNewTextAndHtml = None,
+          anyReviewTask = None)
         tx.saveDeleteNotifications(notfs)
       }
     }
@@ -1646,7 +1650,7 @@ trait PostsDao {
         }
 
       val notfs = notfGenerator(tx).generateForNewPost(
-        toPage, postAfter, anyNewTextAndHtml = None, skipMentions = true)
+        toPage, postAfter, anyNewTextAndHtml = None, anyReviewTask = None, skipMentions = true)
       SHOULD // tx.saveDeleteNotifications(notfs) — but would cause unique key errors
 
       val patch = jsonMaker.makeStorePatch2(postAfter.id, toPage.id,

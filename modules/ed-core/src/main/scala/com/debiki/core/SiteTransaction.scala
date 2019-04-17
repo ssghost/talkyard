@@ -446,6 +446,12 @@ trait SiteTransaction {
 
   def loadUsersWithPrefix(usernamePrefix: String): immutable.Seq[User]
 
+  def loadUsers(peopleQuery: PeopleQuery): immutable.Seq[User] =
+    // For now.
+    loadUsersInclDetailsAndStats(PeopleQuery(
+      orderOffset = PeopleOrderOffset.BySignedUpAtDesc,
+      peopleFilter = PeopleFilter(onlyStaff = true))).map(_._1.briefUser)
+
   def loadUsersInclDetailsAndStats(peopleQuery: PeopleQuery)
     : immutable.Seq[(UserInclDetails, Option[UserStats])]
 
@@ -598,7 +604,8 @@ trait SiteTransaction {
   def markNotfsForPostIdsAsSeenSkipEmail(userId: UserId, postIds: Set[PostId]): Int
   def loadNotificationsForRole(roleId: RoleId, limit: Int, unseenFirst: Boolean,
     upToWhen: Option[ju.Date] = None): Seq[Notification]
-  def loadMentionsOfPeopleInPost(postId: PostId): Seq[Notification]
+  //def loadNotificationsToReviewPost(postId: PostId): Seq[Notification]
+  def loadNotificationsAboutPost(postId: PostId, notfType: NotificationType): Seq[Notification]
   def listUsersNotifiedAboutPost(postId: PostId): Set[UserId]
   /** Useful when writing tests. */
   def countNotificationsPerUser(): Map[UserId, Int]

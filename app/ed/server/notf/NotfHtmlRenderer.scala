@@ -135,6 +135,11 @@ case class NotfHtmlRenderer(siteDao: SiteDao, anyOrigin: Option[String]) {
           ("A topic has been tagged with a tag you're watching", ".", "The topic was written by")
         else
           ("A comment has been tagged with a tag you're watching", ".", "The comment was written by")
+      case NotificationType.NewReviewTask =>
+        val what = (post.nr == PageParts.BodyNr) ? "topic" | "reply"
+        // Could mention if it's currently visible or not, and if there're any review tasks
+        // about it — lookup tasks in review_task_queue3.
+        (s"A new $what for you to review", ".", "It was posted by")
     }
 
     <p>
