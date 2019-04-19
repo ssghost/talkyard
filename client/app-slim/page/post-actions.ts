@@ -108,10 +108,10 @@ function makeReplyBtnTitle(store: Store, post: Post) {
     default:
       return rFragment({},
         r.b({}, t.ReplyV),
-        // On not-always, but *usually*-flat-progress-topics, this Reply button *appends* [DEFPRGRES]
-        // the replies, so show "append" here, to clarify.
-        !page_isAlwaysFlatDiscourse(page) &&
-          page_isUsuallyFlatDiscourse(page) ? r.span({}, " (append)") : null); // I18N
+          page.pageLayout !== TopicLayout.SplitDiscussionProgress ? null : r.span({},
+            // This page has both a discussion and a progress section, so clarify
+            // in which section the reply gets addded.  [TTLSTRTD]
+            page.doingStatus >= PageDoingStatus.Started ? " (progress)" : " (discussion)"));  // I18N
       // t.pa.ReplyToOp <— I18N REMOVE
   }
 }
@@ -141,15 +141,33 @@ export const PostActions = createComponent({
     const page: Page = store.currentPage;
     const post: Post = this.props.post;
 
-    const newPostType =
-        page_isAlwaysFlatDiscourse(page) || (
-              // On usually-flat-progress-topics, by default, append replies. [DEFPRGRES]
-              page_isUsuallyFlatDiscourse(page) && post.nr === BodyNr)
-          ? PostType.BottomComment
-              // Otherwise, the same type as the post we're replying to.
-          : ((post.postType === PostType.Flat || post.postType === PostType.BottomComment)
-              ? post.postType
-              : PostType.Normal);
+    let newPostType: PostType;
+    if (page_isAlwaysFlatDiscourse(page)) {
+      newPostType = PostType.BottomComment;
+    }
+    else if (post.nr === BodyNr) {
+      if (page_isThreadedDiscussion(page)) {
+        newPostType = PostType.Normal;
+      }
+      else if (page_isFlatProgress(page)) {
+        newPostType = PostType.BottomComment;
+      }
+      else {
+        // If the page has both a discussion and a progress section, and
+        // the page (idea/problem) has been started, then, append progress comments.
+        // Otherwise, discussion comments.
+        newPostType = page.pageLayout === TopicLayout.SplitDiscussionProgress &&
+                      page.doingStatus >= PageDoingStatus.Started  // [TTLSTRTD]
+            ? PostType.BottomComment  // progress reply
+            : PostType.Normal;        // discussion reply
+      }
+    }
+    else {
+      // Use the same type as the post we're replying to.
+      newPostType = (post.postType === PostType.Flat || post.postType === PostType.BottomComment)
+          ? post.postType
+          : PostType.Normal;
+    }
 
     const loginToWhat = page.pageRole === PageRole.EmbeddedComments ?
         LoginReason.PostEmbeddedComment : 'LoginToComment';
