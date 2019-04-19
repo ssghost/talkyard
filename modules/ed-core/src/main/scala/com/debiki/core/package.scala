@@ -24,6 +24,7 @@ import org.scalactic.{Bad, ErrorMessage, Good, Or}
 import scala.collection.immutable
 import scala.collection.mutable.ArrayBuffer
 import com.debiki.core.PageParts.BodyNr
+import play.api.libs.json.JsObject
 import scala.util.{Failure, Success, Try}
 
 
@@ -472,12 +473,26 @@ package object core {
     uri: String)
 
 
+  /** Primary key = site id, post id and also pots revision nr, so that if
+    * a spammer edits a wiki page, and insert spam links and spam is
+    * detected and a review task generated, but then a friendly person
+    * edits and removes the links — then the spam link revision will
+    * still be remembered, so the staff who later on handle the review task
+    * can see what triggered it.
+    */
   case class SpamCheckTask(
+    createdAt: When,
     siteId: SiteId,
     postId: PostId,
     postRevNr: Int,
     who: Who,
-    requestStuff: SpamRelReqStuff) {
+    requestStuff: SpamRelReqStuff,
+    resultAt: Option[When] = None,
+    resultJson: Option[JsObject] = None,
+    resultHuman: Option[String] = None) {
+
+    require(resultJson.isDefined == resultAt.isDefined, "TyE4RBK6RS11")
+    require(resultJson.isDefined == resultHuman.isDefined, "TyE4RBK6RS22")
 
     def sitePostId = SitePostId(siteId, postId)
     def siteUserId = SiteUserId(siteId, who.id)

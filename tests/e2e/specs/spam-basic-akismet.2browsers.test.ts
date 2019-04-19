@@ -36,6 +36,16 @@ let post3Selector = '#post-3';
 const AkismetAlwaysSpamName = 'viagra-test-123';
 const AkismetAlwaysSpamEmail = 'akismet-guaranteed-spam@example.com';
 
+const topicOneNotSpamTitle = 'topicOneNotSpamTitle'
+const topicOneNotSpamBody = 'topicOneNotSpamBody'
+const replyOneNotSpam = 'replyOneNotSpam';
+
+// ' --viagra-test-123--' makes Akismet always claim the post is spam.
+const replyTwoIsSpam = 'replyTwoIsSpam --viagra-test-123--';
+const topicTwoTitle = 'topicTwoTitle';
+const topicTwoIsSpamBody = 'topicTwoIsSpamBody --viagra-test-123--';
+
+
 describe("spam test, external services like Akismet and Google Safe Browsing  TyTSPEXT", () => {
 
   if (!settings.include3rdPartyDependentTests) {
@@ -61,117 +71,99 @@ describe("spam test, external services like Akismet and Google Safe Browsing  Ty
 
   it("import a site", () => {
     let site: SiteData = make.forumOwnedByOwen('basicspam', { title: forumTitle });
-    site.settings.allowGuestLogin = true;
-    site.settings.requireVerifiedEmail = false;
+    site.settings.numFirstPostsToReview = 2;
+    site.settings.numFirstPostsToAllow = 4;
     site.members.push(mons);
     site.members.push(maria);
     //site.members.push(mallory);
     idAddress = server.importSiteData(site);
-settings.debugEachStep=true;
   });
 
   it("Mallory tries to sign up with a spammers address", () => {
     mallorysBrowser.go(idAddress.origin);
-    mallorysBrowser.debug();
     mallorysBrowser.complex.signUpAsMemberViaTopbar(
         { ...mallory, emailAddress: AkismetAlwaysSpamEmail });
   });
 
   it("... he's rejected, because of the email address", () => {
-    mallorysBrowser.debug();
-    // EdE7KVF2_
+    mallorysBrowser.serverErrorDialog.waitForIsSpamError();
+  });
+
+  it("... closes the dialogs", () => {
+    mallorysBrowser.serverErrorDialog.close();
+    mallorysBrowser.loginDialog.clickCancel();
   });
 
   it("Mallory retries with a non-spam address", () => {
-    mallorysBrowser.debug();
     mallorysBrowser.complex.signUpAsMemberViaTopbar(mallory);
+    var link = server.getLastVerifyEmailAddressLinkEmailedTo(
+        idAddress.id, mallory.emailAddress, mallorysBrowser);
+    mallorysBrowser.go(link);
+    mallorysBrowser.waitAndClick('#e2eContinue');
     mallorysBrowser.disableRateLimits();
   });
 
-  it("Mallory submits spam", () => {
-    mallorysBrowser.debug();
-
-    mallorysBrowser.forumButtons.clickCreateTopic();
-    mallorysBrowser.editor.editTitle(topicTitle);
-    mallorysBrowser.editor.editText(`${AkismetAlwaysSpamName}
-        http://www.example.com/link-10`);
-    mallorysBrowser.editor.save();
-    mallorysBrowser.editor.debug();
-    //mallorysBrowser.serverErrorDialog.waitAndAssertTextMatches(/links.*EdE4KFY2_/);
-    mallorysBrowser.serverErrorDialog.close();
+  it("He then submits a topic, not spam, works fine", () => {
+    mallorysBrowser.complex.createAndSaveTopic(
+        { title: topicOneNotSpamTitle, body: topicOneNotSpamBody });
   });
 
-  it("Mallory posts a topic with a few links only, that's OK", () => {
-    mallorysBrowser.editor.editText(`Not many links :-(
-        http://www.example.com/link-1
-        http://www.example.com/link-2`);
-    mallorysBrowser.rememberCurrentUrl();
-    mallorysBrowser.editor.save();
-    mallorysBrowser.waitForNewUrl();
-    mallorysBrowser.assertPageTitleMatches(topicTitle);
+  it("... and a not-spam reply", () => {
+    mallorysBrowser.complex.replyToOrigPost(replyOneNotSpam);
   });
 
-  it("... then a *spam* comment", () => {
-    mallorysBrowser.complex.replyToOrigPost('__ed_spam' + '_test_123__');
+  it("He then submits a spam reply ...", () => {
+    mallorysBrowser.complex.replyToOrigPost(replyTwoIsSpam);
   });
 
   it("... which will be visible, initially", () => {
-    mallorysBrowser.waitForVisible(post2Selector);
+    mallorysBrowser.waitForVisible(post2Selector);  // reply one
+    mallorysBrowser.waitForVisible(post3Selector);  // reply two
   });
 
-  it("... then he posts a *not* spam comment", () => {
-    mallorysBrowser.complex.replyToOrigPost("Not spam. Ham.");
+  it("The spam reply gets hidden, eventually", () => {
+    mallorysBrowser.topic.refreshUntilBodyHidden(c.FirstReplyNr + 1);
   });
 
-  it("The spam comment gets hidden, eventually", () => {
-    // [E2EBUG] failed x 2:
-    //    "FAIL: Error: unexpected alert open: {Alert text : You were writing something?}"
-    mallorysBrowser.topic.refreshUntilBodyHidden(2);
+  it("But not the non-spam reply", () => {
+    mallorysBrowser.waitForVisible(post2Selector);  // reply one
   });
 
-  it("... but the not-spam comment is still visible", () => {
-    mallorysBrowser.topic.assertPostNotHidden(3);
+  it("Mallory posts a spam topic", () => {
+    mallorysBrowser.topbar.clickHome();
+    mallorysBrowser.complex.createAndSaveTopic(
+        { title: topicTwoTitle, body: topicTwoIsSpamBody });
   });
 
-  it("... and remains visible", () => {
-    mallorysBrowser.pause(2000); // later: server.waitUntilSpamCheckQueueEmpty()
-    assert(mallorysBrowser.isVisible('#post-3'));
+  it("... which initially is visible", () => {
+    assert(!mallorysBrowser.topic.isPostBodyHidden(c.BodyNr));
   });
 
-  it("Mallory logs out", () => {
-    mallorysBrowser.topbar.clickLogout();
+  it("... after a while, the topic is considered spam, and hidden", () => {
+    mallorysBrowser.topic.refreshUntilBodyHidden(c.BodyNr);
+    assert(mallorysBrowser.topic.isPostBodyHidden(c.BodyNr));
   });
 
-  it("A stranger attempts to sign up with password + a spammer's email: fills in details,", () => {
-    strangersBrowser.topbar.clickSignUp();
-    strangersBrowser.loginDialog.fillInUsername("stranger");
-    strangersBrowser.loginDialog.fillInEmail('__ed_spam' + '_test_123__@ex.co');
-    strangersBrowser.loginDialog.fillInPassword("public1234");
+  it("Mallory tries to posts a fifth post (a new topic)", () => {
+    mallorysBrowser.topbar.clickHome();
+    mallorysBrowser.complex.createAndSaveTopic(
+        { title: topicTwoTitle, body: topicTwoIsSpamBody, resultInError: true });
   });
 
-  // todo: ip addr link
-
-  it("... clicks submit", () => {
-    strangersBrowser.loginDialog.clickSubmit();
+  it("... however, ... allow = 4, this was nr 5", () => {
+    mallorysBrowser.debug();
   });
 
-  it("... accepts terms", () => {
-    strangersBrowser.loginDialog.acceptTerms();
-  });
 
-  it("... but is rejected", () => {
-    mallorysBrowser.serverErrorDialog.waitAndAssertTextMatches(/spam.*EdE7KVF2_/);
-  });
-
-  it("... closes the error dialog", () => {
-    mallorysBrowser.serverErrorDialog.close();
-    strangersBrowser.loginDialog.clickCancel();
-  });
+  // ------ Reviewing spam
 
   it("Owen goes to the Review admin tab and logs in", () => {
     owensBrowser.adminArea.goToReview(idAddress.origin);
     owensBrowser.loginDialog.loginWithPassword(owen);
   });
+
+
+  // ------ Banning the spammer
 
 });
 

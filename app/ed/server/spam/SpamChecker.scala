@@ -212,7 +212,7 @@ class SpamChecker(
         play.api.http.HeaderNames.USER_AGENT -> UserAgent,
         play.api.http.HeaderNames.CONTENT_LENGTH -> postData.length.toString)
 
-    request.post(postData) map { response: WSResponse =>
+    request.post(postData).map({ response: WSResponse =>
       val body = response.body
       val isValid = body.trim == "valid"
       if (!isValid) {
@@ -224,7 +224,10 @@ class SpamChecker(
         p.Logger.info(s"Akismet key is valid [DwM2KWS4]")
       }
       akismetKeyIsValidPromise.success(isValid)
-    }
+    }).recover({
+      case ex: Exception =>
+        p.Logger.warn(s"Error verifying Akismet API key [TyE2AKB5R0]", ex)
+    })
   }
 
 
@@ -398,7 +401,7 @@ class SpamChecker(
         case ex: Exception =>
           // COULD rate limit requests to stopforumspam, seems as if otherwise it rejects connections?
           // Got this:  java.net.ConnectException  when running lots of e2e tests at the same time.
-          p.Logger.warn(s"Error querying api.stopforumspam.com [DwE2PWC7]", ex)
+          p.Logger.warn(s"Error querying stopforumspam.com [TyE2PWC7]", ex)
           SpamCheckResult.NoSpam
       })
   }
@@ -543,7 +546,7 @@ class SpamChecker(
         ...]
       }  */
 
-    request.post(requestBody) map { response: WSResponse =>
+    request.post(requestBody).map({ response: WSResponse =>
       response.status match {
         case 200 =>
           val json = Json.parse(response.body)
@@ -589,6 +592,7 @@ class SpamChecker(
                   threatLines)
           }
         case weirdStatusCode =>
+          // More status codes: https://developers.google.com/safe-browsing/v4/status-codes
           p.Logger.warn(
             s"Error querying Google Safe Browsing API, status: $weirdStatusCode [TyEGSAFEAPISTS]\n" +
             "Response body:\n" + response.body)
@@ -635,7 +639,12 @@ class SpamChecker(
           None
           */
       }
-    }
+    })
+      .recover({
+        case ex: Exception =>
+          p.Logger.warn(s"Error querying Google Safe Browsing API [TyE4DRRETV20]", ex)
+          SpamCheckResult.NoSpam
+      })
   }
 
 
@@ -717,51 +726,64 @@ class SpamChecker(
 
 
   def checkViaAkismet(requestBody: String): Future[SpamCheckResult] = {
-    val promise = Promise[Boolean]()
+    val promise = Promise[(Boolean, Boolean)]()
     akismetKeyIsValidPromise.future onComplete {
       case Success(true) =>
         sendAkismetCheckSpamRequest(apiKey = anyAkismetKey.get, payload = requestBody, promise)
       case _ =>
         // Skip the spam check. We've logged an error already about the invalid key.
-        promise.success(false)
+        promise.success((false, false))
     }
-    promise.future map { isSpam =>
+    promise.future.map({ case (isSpam, akismetIsCertain) =>
       if (!isSpam) SpamCheckResult.NoSpam
       else
         SpamCheckResult.SpamFound(
-          modsMayUnhide = true,
+          modsMayUnhide = !akismetIsCertain,
           spamCheckerDomain = AkismetDomain,
-          humanReadableMessage = "Akismet thinks this is spam")
-    }
+          humanReadableMessage = s"Akismet thinks this is spam. Is certain: $akismetIsCertain")
+    })
+    .recover({
+      case ex: Exception =>
+        p.Logger.warn(s"Error querying $AkismetDomain [TyE8KWBG2], requestBody:\n$requestBody", ex)
+        SpamCheckResult.NoSpam
+    })
   }
 
 
   val AkismetDomain = "akismet.com"
 
-  private def sendAkismetCheckSpamRequest(apiKey: String, payload: String, promise: Promise[Boolean]) {
+  private def sendAkismetCheckSpamRequest(apiKey: String, payload: String,
+        promise: Promise[(Boolean, Boolean)]) {
     val request: WSRequest =
       wsClient.url(s"https://$apiKey.rest.$AkismetDomain/1.1/comment-check").withHttpHeaders(
         play.api.http.HeaderNames.CONTENT_TYPE -> ContentType,
         play.api.http.HeaderNames.USER_AGENT -> UserAgent,
         play.api.http.HeaderNames.CONTENT_LENGTH -> payload.length.toString)
 
-    request.post(payload) map { response: WSResponse =>
+    request.post(payload).map({ response: WSResponse =>
       val body = response.body
       body.trim match {
         case "true" =>
+          val proTip = response.header("X-akismet-pro-tip")
+          val akismetIsCertain = proTip is "discard"
           SECURITY // COULD remember ip and email, check manually? block?
-          p.Logger.debug(s"Akismet found spam: $payload")
-          promise.success(true)
+          p.Logger.debug(s"Akismet found spam: $payload, is totally certain: $akismetIsCertain")
+          promise.success((true, akismetIsCertain))
         case "false" =>
           p.Logger.debug(s"Akismet says not spam: $payload")
-          promise.success(false)
+          promise.success((false, false))
         case badResponse =>
           val debugHelp = response.header("X-akismet-debug-help")
           p.Logger.error(o"""Akismet error: Weird spam check response: '$badResponse',
                debug help: $debugHelp""")
           promise.failure(BadSpamCheckResponseException)
       }
-    }
+    })
+    .recover({
+      case ex: Exception =>
+        p.Logger.warn(s"Error querying $AkismetDomain [TyE2AKBP0], payload:\n$payload", ex)
+        false
+    })
   }
 
 
@@ -821,7 +843,7 @@ class SpamChecker(
       }
       else anyName getOrElse {
         // Check both the username and the full name, by combining them.
-        theUser.anyUsername.map(_ + " ").getOrElse("") + theUser.anyName
+        theUser.anyUsername.map(_ + " ").getOrElse("") + theUser.anyName.getOrElse("")
       }
     body.append("&comment_author=" + encode(theName))
 
