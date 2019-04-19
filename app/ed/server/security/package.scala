@@ -85,6 +85,7 @@ object EdSecurity {
     * as json in the response.
     */
   val AvoidCookiesHeaderName = "X-Ty-Avoid-Cookies"
+  val Avoid = "Avoid"
 
   /** All browsers without cookie id, are rate limited together, for now.
     */
@@ -444,6 +445,10 @@ class EdSecurity(globals: Globals) {
     // "Will This Change Log Users Out?" — cookies that are Secure and HttpOnly aren't deleted.
     // This means the client can no longer look at the session cookie, to find out if one is
     // logged in? Could add JS variables instead.
+    //[NOCOOKIES]  If fixing this, remove 'currentPageSessionId' from the OAuth login [HTTPONLY],
+    // unless cookies are actually disabled for real (they are sometimes, in iframes,
+    // e.g. if 3rd party cookies disabled) — so won't needlessly include
+    // the session id readable in the response body anyway.
     val sidCookie = urlEncodeCookie(SessionIdCookieName, sidOk.value,
       maxAgeSecs = Some(expireIdleAfterSecs))
     val xsrfCookie = urlEncodeCookie(XsrfCookieName, xsrfOk.value,

@@ -32,6 +32,7 @@ import debiki._
 import debiki.EdHttp._
 import ed.server._
 import ed.server.http._
+import ed.server.security.EdSecurity
 import javax.inject.Inject
 import org.scalactic.{Bad, ErrorMessage, Good, Or}
 import play.api.libs.json._
@@ -93,7 +94,6 @@ class LoginWithOpenAuthController @Inject()(cc: ControllerComponents, edContext:
 
   private def startAuthenticationImpl(provider: String, returnToUrl: String, request: GetRequest)
         : Future[Result] = {
-    // [NOCOOKIES] use what, instead of cookies here, to make OAuth login work witout cookies?
 
     globals.loginOriginConfigErrorMessage foreach { message =>
       throwInternalError("DwE5WKU3", message)
@@ -413,7 +413,12 @@ class LoginWithOpenAuthController @Inject()(cc: ControllerComponents, edContext:
   private def createCookiesAndFinishLogin(request: DebikiRequest[_], siteId: SiteId, member: User)
         : Result = {
     request.dao.pubSub.userIsActive(request.siteId, member, request.theBrowserIdData)
-    val (_, _, sidAndXsrfCookies) = createSessionIdAndXsrfToken(siteId, member.id)
+    val (sid, _, sidAndXsrfCookies) = createSessionIdAndXsrfToken(siteId, member.id)
+
+    var maybeCannotUseCookies =
+      request.headers.get(EdSecurity.AvoidCookiesHeaderName) is EdSecurity.Avoid
+
+    def currentPageSessionIdOrEmpty = if (maybeCannotUseCookies) sid.value else ""
 
     val response =
       if (isAjax(request.underlying)) {
@@ -422,17 +427,27 @@ class LoginWithOpenAuthController @Inject()(cc: ControllerComponents, edContext:
         // Javascript dialog. It already knows about any pending redirects.
         OkSafeJson(Json.obj(
           "userCreatedAndLoggedIn" -> JsTrue,
-          "emailVerifiedAndLoggedIn" -> JsBoolean(member.emailVerifiedAt.isDefined)))
+          "emailVerifiedAndLoggedIn" -> JsBoolean(member.emailVerifiedAt.isDefined),
+          // In case we're in an embedded <iframe> login popup, where cookies are disabled,
+          // send the session id in the response body, so the <iframe> can access it
+          // and remember it for the current page load.
+          "currentPageSessionId" -> JsString(currentPageSessionIdOrEmpty))) // [NOCOOKIES]
       }
       else {
-        // If should avoid cookies: Use header instead? If window.opener?   [NOCOOKIES]
-        // (+ maybe return-to-url can incl &is-login-popup query param = true?
-        //  — but opener = same-origin, can access. Google Chrome 63 bug since long fixed.)
+        // Cookieless login. This request is a redirect from e.g. Gmail or Facebook login,
+        // and then there's no AvoidCookiesHeaderName header that tells us if we
+        // are in an iframe and maybe cannot use cookies. For now, assume we maybe
+        // cannot use cookies — so that this'll work also for iframes with 3rd party cookies
+        // disabled or Safari's "Intelligent Tracking Prevention".
+        // Review this later, if making the session cookie HTTP only. [HTTPONLY]
+        maybeCannotUseCookies = true
+
         // What! This isn't an Ajax request, it's a page load. Need to incl is-in-popup info
-        // in the OpenAuth return-to url instead?
+        // in the OpenAuth return-to url instead? No, why? Cookies work fine here, 1st party cookie.
         val isInLoginPopup = request.cookies.get(IsInLoginPopupCookieName).nonEmpty // query param instead?
         def loginPopupCallback: Result =
-          Ok(views.html.login.loginPopupCallback().body) as HTML
+          Ok(views.html.login.loginPopupCallback(
+            currentPageSessionId = currentPageSessionIdOrEmpty).body) as HTML // [NOCOOKIES]
 
         request.cookies.get(ReturnToUrlCookieName) match {
           case Some(returnToUrlCookie) =>

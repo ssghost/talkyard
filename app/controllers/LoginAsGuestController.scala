@@ -45,7 +45,7 @@ class LoginAsGuestController @Inject()(cc: ControllerComponents, edContext: EdCo
     val name = (json \ "name").as[String].trim
     val email = (json \ "email").as[String].trim
 
-    val canUseCookies = request.headers.get(EdSecurity.AvoidCookiesHeaderName) isNot "Avoid"
+    val canUseCookies = request.headers.get(EdSecurity.AvoidCookiesHeaderName) isNot EdSecurity.Avoid
 
     val settings = request.dao.getWholeSiteSettings()
 
